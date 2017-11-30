@@ -155,8 +155,8 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--epoches", type=int, default=100)
     parser.add_argument("--max_len_rnn", type=int, default=10000)
-    parser.add_argument("--hidden_size", type=int, default=100)
-    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--hidden_size", type=int, default=300)
+    parser.add_argument("--lr", type=float, default=1e-4)
     args=parser.parse_args()
     
     # Load word embedding and build vocabulary
@@ -185,7 +185,6 @@ if __name__ == "__main__":
             weight[int(label)] += 1
     weight = 1 / weight
     weight = 3 / torch.sum(weight) * weight
-    print(weight)
     dev_iter = DataLoader(MyData(dataset['dev_sentences'], dataset['dev_labels']), args.batch_size, collate_fn=collate_fn)
     test_iter = DataLoader(MyData(dataset['test_sentences'], dataset['test_labels']), args.batch_size, collate_fn=collate_fn)
     model = BiLSTM(embedding_matrix, hidden_size=args.hidden_size)
@@ -193,7 +192,7 @@ if __name__ == "__main__":
         model.cuda()
         weight = weight.cuda()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    criterion = nn.CrossEntropyLoss(weight=weight, size_average=False)
+    criterion = nn.CrossEntropyLoss(size_average=False)
     eval_criterion = nn.CrossEntropyLoss(size_average=False)
     for epoch in range(args.epoches):
         epoch_sum = 0.0
@@ -206,7 +205,7 @@ if __name__ == "__main__":
             model.hidden2 = model.init_hidden(batch_size = int(batch['labels'].data.size()[0]))
             optimizer.zero_grad()
             output = model(batch['sentence'])
-            loss=criterion(output, batch['labels'])
+            loss = criterion(output, batch['labels'])
             #print('loss=%f' % (loss.data[0]/int(batch['labels'].data.size()[0])))
             epoch_sum += loss.data[0]
             loss.backward()
