@@ -1,0 +1,1 @@
+/home/yezhe/workspace/FindAnatonymWords/data/word_vectors/word_list.txt
