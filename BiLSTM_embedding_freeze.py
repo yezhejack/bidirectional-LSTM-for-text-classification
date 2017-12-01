@@ -146,8 +146,8 @@ if __name__ == "__main__":
                         default = 'data/GoogleNews-vectors-negative300.align.txt')
     parser.add_argument("--isBinary", action = "store_true")
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--epoches", type=int, default=100)
-    parser.add_argument("--max_len_rnn", type=int, default=100000)
+    parser.add_argument("--epoches", type=int, default=50)
+    parser.add_argument("--max_len_rnn", type=int, default=100)
     parser.add_argument("--hidden_size", type=int, default=300)
     parser.add_argument("--lr", type=float, default=1e-4)
     args=parser.parse_args()
@@ -195,6 +195,7 @@ if __name__ == "__main__":
         model.cuda()
         weight = weight.cuda()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min')
     criterion = nn.CrossEntropyLoss(weight=weight, size_average=False)
     eval_criterion = nn.CrossEntropyLoss(size_average=False)
     max_dev_F1 = 0.0
@@ -225,7 +226,7 @@ if __name__ == "__main__":
             for gold_label in batch['labels'].data:
                 gold.append(int(gold_label))
         F1, Acc = calculate_metrics(np.array(gold), np.array(pred), [0,1,2])
-        print('\033[1;32;40m[#%d epoch] train avg loss = %f / F1 = %f / Acc = %f.\033[0m' % (epoch+1, epoch_sum/len(dataset['train_labels']), F1, Acc))
+        print('\033[1;32m[#%d epoch] train avg loss = %f / F1 = %f / Acc = %f.\033[0m' % (epoch+1, epoch_sum/len(dataset['train_labels']), F1, Acc))
 
         # evaluate dev data
         model.eval()
@@ -245,8 +246,9 @@ if __name__ == "__main__":
                 pred.append(int(pred_label))
             for gold_label in batch['labels'].data:
                 gold.append(int(gold_label))
+        scheduler.step(epoch_sum)
         F1, Acc = calculate_metrics(np.array(gold), np.array(pred), [0,1,2])
-        print('\033[1;34;40m[#%d epoch] dev avg loss = %f / F1 = %f / Acc = %f.\033[0m' % (epoch+1, epoch_sum/len(dataset['dev_labels']), F1, Acc))
+        print('\033[1;34m[#%d epoch] dev avg loss = %f / F1 = %f / Acc = %f.\033[0m' % (epoch+1, epoch_sum/len(dataset['dev_labels']), F1, Acc))
 
         gold = []
         pred = []
@@ -265,7 +267,7 @@ if __name__ == "__main__":
             for gold_label in batch['labels'].data:
                 gold.append(int(gold_label))
         test_F1, Acc = calculate_metrics(np.array(gold), np.array(pred), [0,1,2])
-        print('\033[1;31;40m[#%d epoch] test avg loss = %f / F1 = %f / Acc = %f.\033[0m' % (epoch+1, epoch_sum/len(dataset['test_labels']), test_F1, Acc))
+        print('\033[1;31m[#%d epoch] test avg loss = %f / F1 = %f / Acc = %f.\033[0m' % (epoch+1, epoch_sum/len(dataset['test_labels']), test_F1, Acc))
         if F1 > max_dev_F1:
             max_dev_F1 = F1
             final_test_F1 = test_F1

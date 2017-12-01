@@ -16,6 +16,7 @@ import torch.nn.utils.weight_norm as weight_norm
 import torch
 from gensim.models.keyedvectors import KeyedVectors
 import data_loader
+import sys
 logging.basicConfig(level=logging.INFO)
 
 class MyData(Dataset):
@@ -58,7 +59,7 @@ def my_collate_fn_cuda(x):
     return {'sentence':packed_sequences, 'labels':labels.cuda()}
 
 class BiLSTM(nn.Module):
-    def __init__(self, embedding_matrix, hidden_size=100, num_layer=2):
+    def __init__(self, embedding_matrix, hidden_size=100, num_layer=2, embedding_freeze=False):
         super(BiLSTM,self).__init__()
         # embedding layer
         vocab_size = embedding_matrix.shape[0]
@@ -66,19 +67,23 @@ class BiLSTM(nn.Module):
         self.hidden_size = hidden_size
         self.num_layer = num_layer
         self.embed = nn.Embedding(vocab_size, embed_size)
-        self.embed.weight = nn.Parameter(torch.from_numpy(embedding_matrix).type(torch.FloatTensor))
-
+        self.embed.weight = nn.Parameter(torch.from_numpy(embedding_matrix).type(torch.FloatTensor), requires_grad=not embedding_freeze)
+        
+        self.custom_params = []
+        if embedding_freeze == False:
+            self.custom_params.append(self.embed.weight)
         # LSTM layer
         self.lstm1 = nn.LSTM(embed_size, self.hidden_size, num_layer, bidirectional=True)
         for param in self.lstm1.parameters():
+            self.custom_params.append(param)
             if param.data.dim() > 1:
                 nn.init.orthogonal(param)
             else:
                 nn.init.normal(param)
 
-        self.lstm2 = nn.LSTM(self.hidden_size, self.hidden_size, num_layer, bidirectional=True)
-        
+        self.lstm2 = nn.LSTM(self.hidden_size, self.hidden_size, num_layer, bidirectional=True)      
         for param in self.lstm2.parameters():
+            self.custom_params.append(param)
             if param.data.dim() > 1:
                 nn.init.orthogonal(param)
             else:
@@ -87,6 +92,7 @@ class BiLSTM(nn.Module):
         # Fully-connected layer
         self.fc = weight_norm(nn.Linear(self.hidden_size,3))
         for param in self.fc.parameters():
+            self.custom_params.append(param)
             if param.data.dim() > 1:
                 nn.init.orthogonal(param)
             else:
@@ -94,6 +100,9 @@ class BiLSTM(nn.Module):
         
         self.hidden1=self.init_hidden()
         self.hidden2=self.init_hidden()
+
+        
+        
 
     def init_hidden(self, batch_size=3):
         if torch.cuda.is_available():
@@ -152,9 +161,10 @@ if __name__ == "__main__":
                         help = "the path to the embedding, word2vec format",
                         default = 'data/GoogleNews-vectors-negative300.align.txt')
     parser.add_argument("--isBinary", action = "store_true")
+    parser.add_argument("--embedding_freeze", action = "store_true")
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--epoches", type=int, default=100)
-    parser.add_argument("--max_len_rnn", type=int, default=10000)
+    parser.add_argument("--epoches", type=int, default=50)
+    parser.add_argument("--max_len_rnn", type=int, default=100)
     parser.add_argument("--hidden_size", type=int, default=300)
     parser.add_argument("--lr", type=float, default=1e-4)
     args=parser.parse_args()
@@ -187,17 +197,23 @@ if __name__ == "__main__":
     weight = 3 / torch.sum(weight) * weight
     dev_iter = DataLoader(MyData(dataset['dev_sentences'], dataset['dev_labels']), args.batch_size, collate_fn=collate_fn)
     test_iter = DataLoader(MyData(dataset['test_sentences'], dataset['test_labels']), args.batch_size, collate_fn=collate_fn)
-    model = BiLSTM(embedding_matrix, hidden_size=args.hidden_size)
+    model = BiLSTM(embedding_matrix, hidden_size=args.hidden_size, embedding_freeze=args.embedding_freeze)
     if torch.cuda.is_available():
         model.cuda()
         weight = weight.cuda()
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    criterion = nn.CrossEntropyLoss(size_average=False)
+
+    optimizer = torch.optim.Adam(model.custom_params, lr=args.lr)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min')
+    criterion = nn.CrossEntropyLoss(weight=weight, size_average=False)
     eval_criterion = nn.CrossEntropyLoss(size_average=False)
+    max_dev_F1 = 0.0
+    final_test_F1 = 0.0
     for epoch in range(args.epoches):
         epoch_sum = 0.0
         # training
         model.train()
+        gold = []
+        pred = []
         for i, batch in enumerate(train_iter):
             #print('batch size=%d' % (batch['labels'].size()[0]))
             #print(batch['labels'].data)
@@ -205,12 +221,18 @@ if __name__ == "__main__":
             model.hidden2 = model.init_hidden(batch_size = int(batch['labels'].data.size()[0]))
             optimizer.zero_grad()
             output = model(batch['sentence'])
+            _, outputs_label = torch.max(output, 1)
             loss = criterion(output, batch['labels'])
             #print('loss=%f' % (loss.data[0]/int(batch['labels'].data.size()[0])))
             epoch_sum += loss.data[0]
             loss.backward()
             optimizer.step()
-        print('[#%d epoch] training avg loss = %f' % (epoch+1, epoch_sum/len(dataset['train_labels'])))
+            for pred_label in outputs_label:
+                pred.append(int(pred_label))
+            for gold_label in batch['labels'].data:
+                gold.append(int(gold_label))
+        F1, Acc = calculate_metrics(np.array(gold), np.array(pred), [0,1,2])
+        print('[#%d epoch] train avg loss = %f / F1 = %f / Acc = %f' % (epoch+1, epoch_sum/len(dataset['train_labels']), F1, Acc))
 
         # evaluate dev data
         model.eval()
@@ -228,6 +250,7 @@ if __name__ == "__main__":
                 pred.append(int(pred_label))
             for gold_label in batch['labels'].data:
                 gold.append(int(gold_label))
+        scheduler.step(epoch_sum)
         F1, Acc = calculate_metrics(np.array(gold), np.array(pred), [0,1,2])
         print('[#%d epoch] dev avg loss = %f / F1 = %f / Acc = %f' % (epoch+1, epoch_sum/len(dataset['dev_labels']), F1, Acc))
 
@@ -245,5 +268,14 @@ if __name__ == "__main__":
                 pred.append(int(pred_label))
             for gold_label in batch['labels'].data:
                 gold.append(int(gold_label))
-        F1, Acc = calculate_metrics(np.array(gold), np.array(pred), [0,1,2])
-        print('[#%d epoch] test avg loss = %f / F1 = %f / Acc = %f' % (epoch+1, epoch_sum/len(dataset['test_labels']), F1, Acc))
+        test_F1, Acc = calculate_metrics(np.array(gold), np.array(pred), [0,1,2])
+        print('\033[1;31m[#%d epoch] test avg loss = %f / F1 = %f / Acc = %f\033[0m' % (epoch+1, epoch_sum/len(dataset['test_labels']), test_F1, Acc))
+        if F1 > max_dev_F1:
+            max_dev_F1 = F1
+            final_test_F1 = test_F1
+    print(sys.argv)
+    print('Dev F1 = %f, Test F1 = %f' % (max_dev_F1, final_test_F1))
+    with open('result/tunning_no_freeze.txt', 'a') as f:
+        for parameter in sys.argv[1:]:
+            f.write(parameter+'\t')
+        f.write('Dev F1 = %f, Test F1 = %f\n' % (max_dev_F1, final_test_F1))
