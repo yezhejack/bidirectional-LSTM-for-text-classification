@@ -167,6 +167,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_len_rnn", type=int, default=100)
     parser.add_argument("--hidden_size", type=int, default=300)
     parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--result", default="result/result.txt")
     args=parser.parse_args()
     
     # Load word embedding and build vocabulary
@@ -275,7 +276,11 @@ if __name__ == "__main__":
             final_test_F1 = test_F1
     print(sys.argv)
     print('Dev F1 = %f, Test F1 = %f' % (max_dev_F1, final_test_F1))
-    with open('result/tunning_no_freeze.txt', 'a') as f:
+    file_mode = "a"
+    if os.path.exists(args.result)==False:
+        file_mode = "w"
+        os.makedirs(os.path.dirname(args.result), exist_ok=True)
+    with open(args.result, file_mode) as f:
         for parameter in sys.argv[1:]:
             f.write(parameter+'\t')
         f.write('Dev F1 = %f, Test F1 = %f\n' % (max_dev_F1, final_test_F1))
