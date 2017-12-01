@@ -199,6 +199,7 @@ if __name__ == "__main__":
     dev_iter = DataLoader(MyData(dataset['dev_sentences'], dataset['dev_labels']), args.batch_size, collate_fn=collate_fn)
     test_iter = DataLoader(MyData(dataset['test_sentences'], dataset['test_labels']), args.batch_size, collate_fn=collate_fn)
     model = BiLSTM(embedding_matrix, hidden_size=args.hidden_size, embedding_freeze=args.embedding_freeze)
+    delete(embedding_matrix)
     if torch.cuda.is_available():
         model.cuda()
         weight = weight.cuda()
