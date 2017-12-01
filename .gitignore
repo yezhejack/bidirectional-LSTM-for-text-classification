@@ -1,3 +1,4 @@
 *.pyc
 __pycache__
 data/GoogleNews-vectors-negative300.align.txt
+result
