@@ -89,8 +89,11 @@ class BiLSTM(nn.Module):
             else:
                 nn.init.normal(param)
         
+        # attention
+        self.attention = nn.Linear(2*self.hidden_size,1)
+
         # Fully-connected layer
-        self.fc = weight_norm(nn.Linear(self.hidden_size,3))
+        self.fc = weight_norm(nn.Linear(2*self.hidden_size,3))
         for param in self.fc.parameters():
             self.custom_params.append(param)
             if param.data.dim() > 1:
@@ -117,6 +120,7 @@ class BiLSTM(nn.Module):
         padded_sentences, lengths = torch.nn.utils.rnn.pad_packed_sequence(sentences, padding_value=int(0), batch_first=True)
         embeds = self.embed(padded_sentences)
         packed_embeds = torch.nn.utils.rnn.pack_padded_sequence(embeds, lengths, batch_first=True)
+        
         # self.hidden = num_layers*num_directions batch_size hidden_size
         out_lstm1, self.hidden1 = self.lstm1(packed_embeds, self.hidden1)
         padded_out_lstm1, lengths = torch.nn.utils.rnn.pad_packed_sequence(out_lstm1, padding_value=int(0))
@@ -127,10 +131,26 @@ class BiLSTM(nn.Module):
             sum_padded_out_lstm1 += tensor
         packed_out_lstm1 = torch.nn.utils.rnn.pack_padded_sequence(sum_padded_out_lstm1, lengths)
         
-        _, self.hidden2 = self.lstm2(packed_out_lstm1, self.hidden2)
-        output = torch.squeeze(self.hidden2[0][-1] + self.hidden2[0][-2], 0)
-        logging.debug("output size:%s" % str(output.size()))
-        output = self.fc(output)
+        # lstm2 and
+        packed_out_lstm2, self.hidden2 = self.lstm2(packed_out_lstm1, self.hidden2)
+        
+        # attention 
+        padded_out_lstm2, lengths = torch.nn.utils.rnn.pad_packed_sequence(packed_out_lstm2, padding_value=int(0), batch_first=True)
+        unnormalize_weight = F.tanh(torch.squeeze(self.attention(padded_out_lstm2), 2)) # seq_len x batch_size
+        unnormalize_weight = F.softmax(unnormalize_weight, dim=1)
+        unnormalize_weight = torch.nn.utils.rnn.pack_padded_sequence(unnormalize_weight, lengths, batch_first=True)
+        unnormalize_weight, lengths = torch.nn.utils.rnn.pad_packed_sequence(unnormalize_weight, padding_value=0.0, batch_first=True)
+        logging.debug("unnormalize_weight size: %s" % (str(unnormalize_weight.size())))
+        #print(unnormalize_weight)
+        normalize_weight = torch.nn.functional.normalize(unnormalize_weight, p=1, dim=1)
+        #print(normalize_weight)
+        normalize_weight = normalize_weight.view(normalize_weight.size(0), 1, -1)
+        weighted_sum = torch.squeeze(normalize_weight.bmm(padded_out_lstm2), 1)
+        #print("weighted_sum")
+        #print(weighted_sum)
+        #output = torch.squeeze(self.hidden2[0][-1] + self.hidden2[0][-2], 0)
+        #logging.debug("output size:%s" % str(output.size()))
+        output = self.fc(weighted_sum)
         return output
 
 def safe_div(x,y):
@@ -199,7 +219,9 @@ if __name__ == "__main__":
     dev_iter = DataLoader(MyData(dataset['dev_sentences'], dataset['dev_labels']), args.batch_size, collate_fn=collate_fn)
     test_iter = DataLoader(MyData(dataset['test_sentences'], dataset['test_labels']), args.batch_size, collate_fn=collate_fn)
     model = BiLSTM(embedding_matrix, hidden_size=args.hidden_size, embedding_freeze=args.embedding_freeze)
-    delete(embedding_matrix)
+    del(embedding_matrix)
+    del(index_to_word)
+    del(word_to_index)
     if torch.cuda.is_available():
         model.cuda()
         weight = weight.cuda()
