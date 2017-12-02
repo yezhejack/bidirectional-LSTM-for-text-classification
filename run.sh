@@ -1,2 +1,2 @@
 #!/bin/bash
-python BiLSTM.py  --epoches 50 --batch_size 10
+python BiLSTM.py  --embedding_freeze --epoches 50 --batch_size 128

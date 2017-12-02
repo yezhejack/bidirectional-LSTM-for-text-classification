@@ -68,20 +68,21 @@ class BiLSTM(nn.Module):
         self.num_layer = num_layer
         self.embed = nn.Embedding(vocab_size, embed_size)
         self.embed.weight = nn.Parameter(torch.from_numpy(embedding_matrix).type(torch.FloatTensor), requires_grad=not embedding_freeze)
-
+        
+        self.embed_dropout = nn.Dropout(p=0.3)
         self.custom_params = []
         if embedding_freeze == False:
             self.custom_params.append(self.embed.weight)
         # LSTM layer
-        self.lstm1 = nn.LSTM(embed_size, self.hidden_size, num_layer, bidirectional=True)
+        self.lstm1 = nn.LSTM(embed_size, self.hidden_size, num_layer, dropout=0.5, bidirectional=True)
         for param in self.lstm1.parameters():
             self.custom_params.append(param)
             if param.data.dim() > 1:
                 nn.init.orthogonal(param)
             else:
                 nn.init.normal(param)
-
-        self.lstm2 = nn.LSTM(self.hidden_size, self.hidden_size, num_layer, bidirectional=True)
+        self.connection_dropout = nn.Dropout(p=0.25)
+        self.lstm2 = nn.LSTM(self.hidden_size, self.hidden_size, num_layer, dropout=0.5, bidirectional=True)
         for param in self.lstm2.parameters():
             self.custom_params.append(param)
             if param.data.dim() > 1:
@@ -115,7 +116,7 @@ class BiLSTM(nn.Module):
     def forward(self, sentences):
         # get embedding vectors of input
         padded_sentences, lengths = torch.nn.utils.rnn.pad_packed_sequence(sentences, padding_value=int(0), batch_first=True)
-        embeds = self.embed(padded_sentences)
+        embeds = self.embed_dropout(self.embed(padded_sentences))
         packed_embeds = torch.nn.utils.rnn.pack_padded_sequence(embeds, lengths, batch_first=True)
 
         # self.hidden = num_layers*num_directions batch_size hidden_size
@@ -126,7 +127,7 @@ class BiLSTM(nn.Module):
         sum_padded_out_lstm1 = 0
         for tensor in torch.split(padded_out_lstm1, self.hidden_size, dim=2):
             sum_padded_out_lstm1 += tensor
-        packed_out_lstm1 = torch.nn.utils.rnn.pack_padded_sequence(sum_padded_out_lstm1, lengths)
+        packed_out_lstm1 = torch.nn.utils.rnn.pack_padded_sequence(self.connection_dropout(sum_padded_out_lstm1), lengths)
 
         # lstm2 and
         packed_out_lstm2, self.hidden2 = self.lstm2(packed_out_lstm1, self.hidden2)
@@ -138,15 +139,11 @@ class BiLSTM(nn.Module):
         unnormalize_weight = torch.nn.utils.rnn.pack_padded_sequence(unnormalize_weight, lengths, batch_first=True)
         unnormalize_weight, lengths = torch.nn.utils.rnn.pad_packed_sequence(unnormalize_weight, padding_value=0.0, batch_first=True)
         logging.debug("unnormalize_weight size: %s" % (str(unnormalize_weight.size())))
-        #print(unnormalize_weight)
         normalize_weight = torch.nn.functional.normalize(unnormalize_weight, p=1, dim=1)
-        #print(normalize_weight)
         normalize_weight = normalize_weight.view(normalize_weight.size(0), 1, -1)
         weighted_sum = torch.squeeze(normalize_weight.bmm(padded_out_lstm2), 1)
-        #print("weighted_sum")
-        #print(weighted_sum)
-        #output = torch.squeeze(self.hidden2[0][-1] + self.hidden2[0][-2], 0)
-        #logging.debug("output size:%s" % str(output.size()))
+
+        # fully connected layer
         output = self.fc(weighted_sum)
         return output
 
@@ -223,7 +220,7 @@ if __name__ == "__main__":
         model.cuda()
         weight = weight.cuda()
 
-    optimizer = torch.optim.Adam(model.custom_params, lr=args.lr)
+    optimizer = torch.optim.Adam(model.custom_params, lr=args.lr, weight_decay=0.0001)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min')
     criterion = nn.CrossEntropyLoss(weight=weight, size_average=False)
     eval_criterion = nn.CrossEntropyLoss(size_average=False)
@@ -244,6 +241,7 @@ if __name__ == "__main__":
             output = model(batch['sentence'])
             _, outputs_label = torch.max(output, 1)
             loss = criterion(output, batch['labels'])
+            torch.nn.utils.clip_grad_norm(model.custom_params, 5)
             #print('loss=%f' % (loss.data[0]/int(batch['labels'].data.size()[0])))
             epoch_sum += loss.data[0]
             loss.backward()
@@ -271,7 +269,7 @@ if __name__ == "__main__":
                 pred.append(int(pred_label))
             for gold_label in batch['labels'].data:
                 gold.append(int(gold_label))
-        scheduler.step(epoch_sum)
+        #scheduler.step(epoch_sum)
         F1, Acc = calculate_metrics(np.array(gold), np.array(pred), [0,1,2])
         print('[#%d epoch] dev avg loss = %f / F1 = %f / Acc = %f' % (epoch+1, epoch_sum/len(dataset['dev_labels']), F1, Acc))
 
