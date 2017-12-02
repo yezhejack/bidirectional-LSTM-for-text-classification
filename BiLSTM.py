@@ -68,7 +68,7 @@ class BiLSTM(nn.Module):
         self.num_layer = num_layer
         self.embed = nn.Embedding(vocab_size, embed_size)
         self.embed.weight = nn.Parameter(torch.from_numpy(embedding_matrix).type(torch.FloatTensor), requires_grad=not embedding_freeze)
-        
+
         self.custom_params = []
         if embedding_freeze == False:
             self.custom_params.append(self.embed.weight)
@@ -81,14 +81,14 @@ class BiLSTM(nn.Module):
             else:
                 nn.init.normal(param)
 
-        self.lstm2 = nn.LSTM(self.hidden_size, self.hidden_size, num_layer, bidirectional=True)      
+        self.lstm2 = nn.LSTM(self.hidden_size, self.hidden_size, num_layer, bidirectional=True)
         for param in self.lstm2.parameters():
             self.custom_params.append(param)
             if param.data.dim() > 1:
                 nn.init.orthogonal(param)
             else:
                 nn.init.normal(param)
-        
+
         # attention
         self.attention = nn.Linear(2*self.hidden_size,1)
 
@@ -100,17 +100,14 @@ class BiLSTM(nn.Module):
                 nn.init.orthogonal(param)
             else:
                 nn.init.normal(param)
-        
+
         self.hidden1=self.init_hidden()
         self.hidden2=self.init_hidden()
-
-        
-        
 
     def init_hidden(self, batch_size=3):
         if torch.cuda.is_available():
             return (Variable(torch.zeros(self.num_layer*2, batch_size, self.hidden_size)).cuda(),
-                    Variable(torch.zeros(self.num_layer*2, batch_size, self.hidden_size)).cuda()) 
+                    Variable(torch.zeros(self.num_layer*2, batch_size, self.hidden_size)).cuda())
         else:
             return (Variable(torch.zeros(self.num_layer*2, batch_size, self.hidden_size)),
                     Variable(torch.zeros(self.num_layer*2, batch_size, self.hidden_size)))
@@ -120,7 +117,7 @@ class BiLSTM(nn.Module):
         padded_sentences, lengths = torch.nn.utils.rnn.pad_packed_sequence(sentences, padding_value=int(0), batch_first=True)
         embeds = self.embed(padded_sentences)
         packed_embeds = torch.nn.utils.rnn.pack_padded_sequence(embeds, lengths, batch_first=True)
-        
+
         # self.hidden = num_layers*num_directions batch_size hidden_size
         out_lstm1, self.hidden1 = self.lstm1(packed_embeds, self.hidden1)
         padded_out_lstm1, lengths = torch.nn.utils.rnn.pad_packed_sequence(out_lstm1, padding_value=int(0))
@@ -130,11 +127,11 @@ class BiLSTM(nn.Module):
         for tensor in torch.split(padded_out_lstm1, self.hidden_size, dim=2):
             sum_padded_out_lstm1 += tensor
         packed_out_lstm1 = torch.nn.utils.rnn.pack_padded_sequence(sum_padded_out_lstm1, lengths)
-        
+
         # lstm2 and
         packed_out_lstm2, self.hidden2 = self.lstm2(packed_out_lstm1, self.hidden2)
-        
-        # attention 
+
+        # attention
         padded_out_lstm2, lengths = torch.nn.utils.rnn.pad_packed_sequence(packed_out_lstm2, padding_value=int(0), batch_first=True)
         unnormalize_weight = F.tanh(torch.squeeze(self.attention(padded_out_lstm2), 2)) # seq_len x batch_size
         unnormalize_weight = F.softmax(unnormalize_weight, dim=1)
@@ -189,14 +186,14 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--result", default="result/result.txt")
     args=parser.parse_args()
-    
+
     # Load word embedding and build vocabulary
     wv = KeyedVectors.load_word2vec_format(args.embedding_path, binary=args.isBinary)
     index_to_word = [key for key in wv.vocab]
     word_to_index = {}
     for index, word in enumerate(index_to_word):
         word_to_index[word] = index
-    
+
     dataset = data_loader.Load_SemEval2016(word_to_index, max_len=args.max_len_rnn)
     embed_size = wv[index_to_word[0]].size
     vocab_size = len(index_to_word)
