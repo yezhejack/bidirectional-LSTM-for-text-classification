@@ -6,19 +6,18 @@ import json
 import logging
 import argparse
 import os
-from collections import namedtuple
 import math
+import sys
+import torch
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import torch.nn.utils.weight_norm as weight_norm
-import torch
 from gensim.models.keyedvectors import KeyedVectors
 import data_loader
-import sys
-logging.basicConfig(level=logging.INFO)
 
+logging.basicConfig(level=logging.INFO)
 class MyData(Dataset):
     def __init__(self,x,y):
         self.x=x
@@ -61,6 +60,7 @@ def my_collate_fn_cuda(x):
 class BiLSTM(nn.Module):
     def __init__(self, embedding_matrix, hidden_size=100, num_layer=2, embedding_freeze=False):
         super(BiLSTM,self).__init__()
+        
         # embedding layer
         vocab_size = embedding_matrix.shape[0]
         embed_size = embedding_matrix.shape[1]
@@ -68,12 +68,12 @@ class BiLSTM(nn.Module):
         self.num_layer = num_layer
         self.embed = nn.Embedding(vocab_size, embed_size)
         self.embed.weight = nn.Parameter(torch.from_numpy(embedding_matrix).type(torch.FloatTensor), requires_grad=not embedding_freeze)
-        
         self.embed_dropout = nn.Dropout(p=0.3)
         self.custom_params = []
         if embedding_freeze == False:
             self.custom_params.append(self.embed.weight)
-        # LSTM layer
+        
+        # The first LSTM layer
         self.lstm1 = nn.LSTM(embed_size, self.hidden_size, num_layer, dropout=0.5, bidirectional=True)
         for param in self.lstm1.parameters():
             self.custom_params.append(param)
@@ -81,7 +81,10 @@ class BiLSTM(nn.Module):
                 nn.init.orthogonal(param)
             else:
                 nn.init.normal(param)
+
         self.connection_dropout = nn.Dropout(p=0.25)
+
+        # The second LSTM layer
         self.lstm2 = nn.LSTM(self.hidden_size, self.hidden_size, num_layer, dropout=0.5, bidirectional=True)
         for param in self.lstm2.parameters():
             self.custom_params.append(param)
@@ -90,7 +93,7 @@ class BiLSTM(nn.Module):
             else:
                 nn.init.normal(param)
 
-        # attention
+        # Attention
         self.attention = nn.Linear(2*self.hidden_size,1)
 
         # Fully-connected layer
@@ -233,8 +236,6 @@ if __name__ == "__main__":
         gold = []
         pred = []
         for i, batch in enumerate(train_iter):
-            #print('batch size=%d' % (batch['labels'].size()[0]))
-            #print(batch['labels'].data)
             model.hidden1 = model.init_hidden(batch_size = int(batch['labels'].data.size()[0]))
             model.hidden2 = model.init_hidden(batch_size = int(batch['labels'].data.size()[0]))
             optimizer.zero_grad()
@@ -288,7 +289,7 @@ if __name__ == "__main__":
             for gold_label in batch['labels'].data:
                 gold.append(int(gold_label))
         test_F1, Acc = calculate_metrics(np.array(gold), np.array(pred), [0,1,2])
-        print('\033[1;31m[#%d epoch] test avg loss = %f / F1 = %f / Acc = %f\033[0m' % (epoch+1, epoch_sum/len(dataset['test_labels']), test_F1, Acc))
+        print('\033[1;32m[#%d epoch] test avg loss = %f / F1 = %f / Acc = %f\033[0m' % (epoch+1, epoch_sum/len(dataset['test_labels']), test_F1, Acc))
         if F1 > max_dev_F1:
             max_dev_F1 = F1
             final_test_F1 = test_F1

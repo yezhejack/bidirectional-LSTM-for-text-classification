@@ -17,9 +17,9 @@ def Load_SemEval2016(word_to_index, max_len=20):
                         if word in word_to_index:
                             sen.append(word_to_index[word])
                         else:
-                            sen.append(word_to_index['</s>'])
+                            sen.append(word_to_index['the'])
                     if len(sen) == 0:
-                        sen = [word_to_index['</s>']]
+                        sen = [word_to_index['the']]
                     dataset["%s_sentences" % mode].append(sen)
                     dataset["%s_labels" % mode].append(labels_map[label])
                     line = f.readline()
