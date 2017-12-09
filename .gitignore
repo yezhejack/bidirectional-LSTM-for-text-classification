@@ -2,3 +2,8 @@
 __pycache__
 data/GoogleNews-vectors-negative300.align.txt
 result
+*.pred
+*.scored
+*.vocab
+checkpoint/
+*.ipynb_checkpoints*

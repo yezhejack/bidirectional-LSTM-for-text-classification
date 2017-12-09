@@ -46,7 +46,7 @@ def my_collate_fn(x):
 def my_collate_fn_cuda(x):
     lengths = np.array([len(term['sentence']) for term in x])
     sorted_index = np.argsort(-lengths)
-    
+
     # build reverse index map to reconstruct the original order
     reverse_sorted_index = np.zeros(len(sorted_index), dtype=int)
     for i, j in enumerate(sorted_index):
@@ -65,7 +65,7 @@ def my_collate_fn_cuda(x):
 class BiLSTM(nn.Module):
     def __init__(self, embedding_matrix, hidden_size=100, num_layer=2, embedding_freeze=False):
         super(BiLSTM,self).__init__()
-        
+
         # embedding layer
         vocab_size = embedding_matrix.shape[0]
         embed_size = embedding_matrix.shape[1]
@@ -77,7 +77,7 @@ class BiLSTM(nn.Module):
         self.custom_params = []
         if embedding_freeze == False:
             self.custom_params.append(self.embed.weight)
-        
+
         # The first LSTM layer
         self.lstm1 = nn.LSTM(embed_size, self.hidden_size, num_layer, dropout=0.5, bidirectional=True)
         for param in self.lstm1.parameters():
@@ -158,7 +158,7 @@ class BiLSTM(nn.Module):
 class BiGRU(nn.Module):
     def __init__(self, embedding_matrix, hidden_size=100, num_layer=2, embedding_freeze=False):
         super(BiGRU, self).__init__()
-        
+
         # embedding layer
         vocab_size = embedding_matrix.shape[0]
         embed_size = embedding_matrix.shape[1]
@@ -170,7 +170,7 @@ class BiGRU(nn.Module):
         self.custom_params = []
         if embedding_freeze == False:
             self.custom_params.append(self.embed.weight)
-        
+
         # The first GRU layer
         self.gru1 = nn.GRU(embed_size, self.hidden_size, num_layer, dropout=0.5, bidirectional=True)
         for param in self.gru1.parameters():
@@ -276,7 +276,7 @@ if __name__ == "__main__":
     parser.add_argument("--isBinary", action="store_true")
     parser.add_argument("--gru", help="provide this for using gru layer instead of lstm layer", action="store_true")
     parser.add_argument("--embedding_freeze", action="store_true")
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--epoches", type=int, default=50)
     parser.add_argument("--max_len_rnn", type=int, default=100)
     parser.add_argument("--hidden_size", type=int, default=300)
@@ -289,7 +289,7 @@ if __name__ == "__main__":
     torch.manual_seed(0)
     torch.cuda.manual_seed_all(0)
     np.random.seed(0)
-    
+
     # Load word embedding and build vocabulary
     wv = KeyedVectors.load_word2vec_format(args.embedding_path, binary=args.isBinary)
     index_to_word = [key for key in wv.vocab]
