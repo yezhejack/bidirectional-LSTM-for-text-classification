@@ -137,7 +137,7 @@ class BiLSTM(nn.Module):
         # lstm2
         packed_out_lstm2, self.hidden2 = self.lstm2(packed_out_lstm1, self.hidden2)
 
-        # attention
+        # average sum of output of lstm
         padded_out_lstm2, lengths = torch.nn.utils.rnn.pad_packed_sequence(packed_out_lstm2, padding_value=int(0), batch_first=True)
         unnormalize_weight = Variable(torch.ones(padded_out_lstm2.shape[0], lengths[0]).cuda()) # batch_size x seq_len
         unnormalize_weight = torch.nn.utils.rnn.pack_padded_sequence(unnormalize_weight, lengths, batch_first=True)
@@ -187,9 +187,6 @@ class BiGRU(nn.Module):
             else:
                 nn.init.normal(param)
 
-        # Attention
-        self.attention = nn.Linear(2*self.hidden_size,1)
-
         # Fully-connected layer
         self.fc = weight_norm(nn.Linear(2*self.hidden_size,3))
         for param in self.fc.parameters():
@@ -227,7 +224,7 @@ class BiGRU(nn.Module):
         # gru2
         packed_out_gru2, self.hidden2 = self.gru2(packed_out_gru1, self.hidden2)
 
-        # attention
+        # average sum of output of GRU
         padded_out_gru2, lengths = torch.nn.utils.rnn.pad_packed_sequence(packed_out_gru2, padding_value=int(0), batch_first=True)
         unnormalize_weight = Variable(torch.ones(padded_out_gru2.shape[0], lengths[0]).cuda()) # batch_size x seq_len
         unnormalize_weight = torch.nn.utils.rnn.pack_padded_sequence(unnormalize_weight, lengths, batch_first=True)
@@ -236,7 +233,7 @@ class BiGRU(nn.Module):
         normalize_weight = torch.nn.functional.normalize(unnormalize_weight, p=1, dim=1)
         normalize_weight = normalize_weight.view(normalize_weight.size(0), 1, -1)
         weighted_sum = torch.squeeze(normalize_weight.bmm(padded_out_gru2), 1)
-
+                
         # fully connected layer
         output = self.fc(weighted_sum)
         return output
