@@ -283,7 +283,7 @@ if __name__ == "__main__":
     parser.add_argument("--epoches", type=int, default=50)
     parser.add_argument("--max_len_rnn", type=int, default=100)
     parser.add_argument("--hidden_size", type=int, default=300)
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--alias", default="bilstm")
     args=parser.parse_args()
     vocab_path = os.path.join("data", "%s.vocab" % (args.alias))

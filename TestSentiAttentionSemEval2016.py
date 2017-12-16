@@ -17,6 +17,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_length",help='sentence size',type = int, default = 100)
     parser.add_argument("--batch_size",help='batch size',type = int, default = 32)
     parser.add_argument("--alias",help="the alias of the experiment", default="bilstm")
+    parser.add_argument("--gru", default="store_true")
     args=parser.parse_args()
 
     vocab_path = os.path.join("data", "%s.vocab" % (args.alias))
@@ -26,11 +27,11 @@ if __name__ == "__main__":
     f=open(vocab_path)
     word_to_index=json.loads(f.readline())
     f.close()
-    
+
     # prepare test data
     sentence_list, fake_label_list = data_loader.Load(word_to_index, args.semeval_file, max_len=args.max_length)
     test_iter = DataLoader(MyData(sentence_list, fake_label_list), args.batch_size, collate_fn=my_collate_fn_cuda)
-    
+
     # load checkpoint model
     model = torch.load(checkpoint_path)
     model.eval()
@@ -43,17 +44,17 @@ if __name__ == "__main__":
         _, outputs_label = torch.max(output, 1)
         for index in batch['reverse_sorted_index']:
             pred.append(int(outputs_label.data[index]))
-    
+
     with open('scorer/%s.pred' % (args.alias), 'w') as o:
         labels = ['negative','positive','neutral']
         for i,p in enumerate(pred):
             o.write('%d\t%s\n' % (i+1,labels[p]))
-    
+
     os.chdir("scorer")
     out_bytes = subprocess.check_output(['perl','SemEval2016_task4_test_scorer_subtaskA.pl','%s.pred' % (args.alias)])
     output = out_bytes.decode('utf-8')
     os.chdir("..")
-    
+
     print(output)
     output = output.split()
 

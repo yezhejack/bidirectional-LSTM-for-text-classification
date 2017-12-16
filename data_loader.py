@@ -41,7 +41,7 @@ def Load(word_to_index, path, max_len=20, label=0):
 
     return sen_list, label_list
 
-def Load_SemEval2016(word_to_index, max_len=20):
+def Load_SemEval2016(word_to_index, max_len=20, padding="<pad>"):
     labels_map = {'positive':1, 'neutral':2, 'negative':0}
     dataset = {"train_sentences":[], 
                "train_labels":[],
@@ -60,7 +60,7 @@ def Load_SemEval2016(word_to_index, max_len=20):
         logging.info(key+":"+str(len(dataset[key])))
     return dataset
 
-def Load_SemEval2016_Test(word_to_index, max_len=20):
+def Load_SemEval2016_Test(word_to_index, max_len=20, padding="<pad>"):
     labels_map = {'positive':1, 'neutral':2, 'negative':0}
     sen_list = []
     label_list = []
@@ -79,9 +79,9 @@ def Load_SemEval2016_Test(word_to_index, max_len=20):
             if word in word_to_index:
                 sen.append(word_to_index[word])
             else:
-                sen.append(word_to_index['the'])
+                sen.append(word_to_index[padding])
         if len(sen) == 0:
-            sen = [word_to_index['the']]   
+            sen = [word_to_index[padding]]   
         sen_list.append(sen)
         line_f = f.readline()
         line_g = g.readline()
