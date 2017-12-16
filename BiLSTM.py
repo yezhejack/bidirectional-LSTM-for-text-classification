@@ -19,49 +19,6 @@ import data_loader
 from models.RNN import *
 
 logging.basicConfig(level=logging.INFO)
-class MyData(Dataset):
-    def __init__(self,x,y):
-        self.x=x
-        self.y=y
-
-    def __len__(self):
-        return len(self.y)
-
-    def __getitem__(self,idx):
-        return {'sentence':self.x[idx],'label':self.y[idx]}
-
-def my_collate_fn(x):
-    lengths = np.array([len(term['sentence']) for term in x])
-    sorted_index = np.argsort(-lengths)
-    lengths = lengths[sorted_index]
-    # control the maximum length of LSTM
-    max_len = lengths[0]
-    batch_size = len(x)
-    sentence_tensor = torch.LongTensor(batch_size, int(max_len)).zero_()
-    for i, index in enumerate(sorted_index):
-        sentence_tensor[i][:lengths[i]] = torch.LongTensor(x[index]['sentence'][:max_len])
-    labels = Variable(torch.LongTensor([x[i]['label'] for i in sorted_index]))
-    packed_sequences = torch.nn.utils.rnn.pack_padded_sequence(Variable(sentence_tensor.t()), lengths)
-    return {'sentence':packed_sequences, 'labels':labels}
-
-def my_collate_fn_cuda(x):
-    lengths = np.array([len(term['sentence']) for term in x])
-    sorted_index = np.argsort(-lengths)
-
-    # build reverse index map to reconstruct the original order
-    reverse_sorted_index = np.zeros(len(sorted_index), dtype=int)
-    for i, j in enumerate(sorted_index):
-        reverse_sorted_index[j]=i
-    lengths = lengths[sorted_index]
-    # control the maximum length of LSTM
-    max_len = lengths[0]
-    batch_size = len(x)
-    sentence_tensor = torch.LongTensor(batch_size, int(max_len)).zero_()
-    for i, index in enumerate(sorted_index):
-        sentence_tensor[i][:lengths[i]] = torch.LongTensor(x[index]['sentence'])
-    labels = Variable(torch.LongTensor([x[i]['label'] for i in sorted_index]))
-    packed_sequences = torch.nn.utils.rnn.pack_padded_sequence(Variable(sentence_tensor.t()).cuda(), lengths)
-    return {'sentence':packed_sequences, 'labels':labels.cuda(), 'reverse_sorted_index':reverse_sorted_index}
 
 def safe_div(x,y):
     if y == 0:
@@ -91,7 +48,7 @@ if __name__ == "__main__":
                         help="the path to the embedding, word2vec format",
                         default='data/GoogleNews-vectors-negative300.align.txt')
     parser.add_argument("--isBinary", action="store_true")
-    parser.add_argument("--gru", help="provide this for using gru layer instead of lstm layer", action="store_true")
+    parser.add_argument("--model", help="choose a model of models.RNN", action="BiLSTM")
     parser.add_argument("--embedding_freeze", action="store_true")
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--epoches", type=int, default=50)
@@ -125,21 +82,21 @@ if __name__ == "__main__":
         embedding_matrix[i] = np.array(wv[word])
     print("embed_size:%d" % (embed_size))
     print("vocab_size:%d" % (vocab_size))
-    collate_fn = my_collate_fn
+    collate_fn = data_loader.my_collate_fn
     if torch.cuda.is_available():
-        collate_fn = my_collate_fn_cuda
+        collate_fn = data_loader.my_collate_fn_cuda
 
-    train_iter = DataLoader(MyData(dataset['train_sentences'], dataset['train_labels']), args.batch_size, shuffle=True, collate_fn=collate_fn)
+    train_iter = DataLoader(data_loader.MyData(dataset['train_sentences'], dataset['train_labels']), args.batch_size, shuffle=True, collate_fn=collate_fn)
     weight = torch.FloatTensor([0.0, 0.0, 0.0])
     for batch in train_iter:
         for label in batch['labels']:
             weight[int(label)] += 1
     weight = 1 / weight
     weight = 3 / torch.sum(weight) * weight
-    dev_iter = DataLoader(MyData(dataset['dev_sentences'], dataset['dev_labels']), args.batch_size, shuffle=False, collate_fn=collate_fn)
-    test_iter = DataLoader(MyData(dataset['test_sentences'], dataset['test_labels']), args.batch_size, shuffle=False, collate_fn=collate_fn)
+    dev_iter = DataLoader(data_loader.MyData(dataset['dev_sentences'], dataset['dev_labels']), args.batch_size, shuffle=False, collate_fn=collate_fn)
+    test_iter = DataLoader(data_loader.MyData(dataset['test_sentences'], dataset['test_labels']), args.batch_size, shuffle=False, collate_fn=collate_fn)
     sen_list, label_list = data_loader.Load_SemEval2016_Test(word_to_index, max_len=args.max_rnn_len)
-    sem_iter = DataLoader(MyData(sen_list, label_list), args.batch_size, shuffle=False, collate_fn=collate_fn)
+    sem_iter = DataLoader(data_loader.MyData(sen_list, label_list), args.batch_size, shuffle=False, collate_fn=collate_fn)
     model = ""
     if args.gru:
         model = BiGRU(embedding_matrix, hidden_size=args.hidden_size, embedding_freeze=args.embedding_freeze)

@@ -7,7 +7,7 @@ import os
 import logging
 import subprocess
 import os
-from NoAttentionBiLSTM import *
+from model.RNN import *
 import data_loader
 logging.basicConfig(level=logging.INFO)
 

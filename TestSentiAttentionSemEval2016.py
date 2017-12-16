@@ -7,7 +7,7 @@ import os
 import logging
 import subprocess
 import os
-from SentiAttentionBiLSTM import *
+from model.RNN import *
 import data_loader
 logging.basicConfig(level=logging.INFO)
 
@@ -17,7 +17,6 @@ if __name__ == "__main__":
     parser.add_argument("--max_length",help='sentence size',type = int, default = 100)
     parser.add_argument("--batch_size",help='batch size',type = int, default = 32)
     parser.add_argument("--alias",help="the alias of the experiment", default="bilstm")
-    parser.add_argument("--gru", default="store_true")
     args=parser.parse_args()
 
     vocab_path = os.path.join("data", "%s.vocab" % (args.alias))

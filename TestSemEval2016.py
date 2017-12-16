@@ -7,7 +7,7 @@ import os
 import logging
 import subprocess
 import os
-from BiLSTM import *
+from models.RNN import *
 import data_loader
 logging.basicConfig(level=logging.INFO)
 
@@ -29,7 +29,7 @@ if __name__ == "__main__":
     
     # prepare test data
     sentence_list, fake_label_list = data_loader.Load(word_to_index, args.semeval_file, max_len=args.max_length)
-    test_iter = DataLoader(MyData(sentence_list, fake_label_list), args.batch_size, collate_fn=my_collate_fn_cuda)
+    test_iter = DataLoader(data_loader.MyData(sentence_list, fake_label_list), args.batch_size, collate_fn=data_loader.my_collate_fn_cuda)
     
     # load checkpoint model
     model = torch.load(checkpoint_path)
