@@ -48,22 +48,21 @@ if __name__ == "__main__":
                         help="the path to the embedding, word2vec format",
                         default='data/GoogleNews-vectors-negative300.align.txt')
     parser.add_argument("--isBinary", action="store_true")
-    parser.add_argument("--model", help="choose a model of models.RNN", action="BiLSTM")
+    parser.add_argument("--model", help="choose a model of models.RNN", default="bilstm")
     parser.add_argument("--embedding_freeze", action="store_true")
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--epoches", type=int, default=50)
     parser.add_argument("--max_rnn_len", type=int, default=100)
     parser.add_argument("--hidden_size", type=int, default=150)
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--weight_decay", type=float, default=1e-5)
     parser.add_argument("--alias", default="bilstm")
     parser.add_argument("--padding", default="<s>")
     args=parser.parse_args()
     vocab_path = os.path.join("data", "%s.vocab" % (args.alias))
     checkpoint_path = os.path.join("checkpoint", "%s.ckp" % (args.alias))
     # set seed
-    torch.manual_seed(0)
     torch.cuda.manual_seed_all(0)
-    np.random.seed(0)
 
     # Load word embedding and build vocabulary
     wv = KeyedVectors.load_word2vec_format(args.embedding_path, binary=args.isBinary)
@@ -98,10 +97,17 @@ if __name__ == "__main__":
     sen_list, label_list = data_loader.Load_SemEval2016_Test(word_to_index, max_len=args.max_rnn_len)
     sem_iter = DataLoader(data_loader.MyData(sen_list, label_list), args.batch_size, shuffle=False, collate_fn=collate_fn)
     model = ""
-    if args.gru:
+    if args.model == "gru":
         model = BiGRU(embedding_matrix, hidden_size=args.hidden_size, embedding_freeze=args.embedding_freeze)
-    else:
+    elif args.model == "bilstm":
         model = BiLSTM(embedding_matrix, hidden_size=args.hidden_size, embedding_freeze=args.embedding_freeze)
+    elif args.model == "noattentionbilstm":
+        model = NoAttentionBiLSTM(embedding_matrix, hidden_size=args.hidden_size, embedding_freeze=args.embedding_freeze)
+    elif args.model == "sentiattentionbilstm":
+        model = SentiAttentionBiLSTM(embedding_matrix, hidden_size=args.hidden_size, embedding_freeze=args.embedding_freeze)
+    else:
+        print("Unimplemented model")
+
     del(embedding_matrix)
     del(index_to_word)
     del(word_to_index)
@@ -109,11 +115,11 @@ if __name__ == "__main__":
         model.cuda()
         weight = weight.cuda()
 
-    optimizer = torch.optim.Adam(model.custom_params, lr=args.lr, weight_decay=0.0001)
+    optimizer = torch.optim.Adam(model.custom_params, lr=args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min')
     criterion = nn.CrossEntropyLoss(weight=weight, size_average=False)
     eval_criterion = nn.CrossEntropyLoss(size_average=False)
-    max_dev_F1 = 0.0
+    min_dev_loss = 9999999.0
     final_test_F1 = 0.0
     for epoch in range(args.epoches):
         epoch_sum = 0.0
@@ -128,7 +134,7 @@ if __name__ == "__main__":
             output = model(batch['sentence'])
             _, outputs_label = torch.max(output, 1)
             loss = criterion(output, batch['labels'])
-            torch.nn.utils.clip_grad_norm(model.custom_params, 1)
+            torch.nn.utils.clip_grad_norm(model.custom_params, 9)
             #print('loss=%f' % (loss.data[0]/int(batch['labels'].data.size()[0])))
             epoch_sum += loss.data[0]
             loss.backward()
@@ -158,7 +164,8 @@ if __name__ == "__main__":
                 gold.append(int(gold_label))
         #scheduler.step(epoch_sum)
         F1, Acc = calculate_metrics(np.array(gold), np.array(pred), [0,1,2])
-        print('[#%d epoch] dev avg loss = %f / F1 = %f / Acc = %f' % (epoch+1, epoch_sum/len(dataset['dev_labels']), F1, Acc))
+        dev_loss = epoch_sum/len(dataset['dev_labels'])
+        print('[#%d epoch] dev avg loss = %f / F1 = %f / Acc = %f' % (epoch+1, dev_loss, F1, Acc))
 
         gold = []
         pred = []
@@ -176,8 +183,8 @@ if __name__ == "__main__":
                 gold.append(int(gold_label))
         test_F1, Acc = calculate_metrics(np.array(gold), np.array(pred), [0,1,2])
         print('\033[1;32m[#%d epoch] test avg loss = %f / F1 = %f / Acc = %f\033[0m' % (epoch+1, epoch_sum/len(dataset['test_labels']), test_F1, Acc))
-        if F1 > max_dev_F1:
-            max_dev_F1 = F1
+        if dev_loss < min_dev_loss:
+            min_dev_loss = dev_loss
             final_test_F1 = test_F1
             if os.path.exists(checkpoint_path)==False:
                 os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
@@ -185,4 +192,4 @@ if __name__ == "__main__":
             torch.save(model, checkpoint_path)
 
     print(sys.argv)
-    print('Dev F1 = %f, Test F1 = %f' % (max_dev_F1, final_test_F1))
+    print('Dev loss = %f, Test F1 = %f' % (min_dev_loss, final_test_F1))

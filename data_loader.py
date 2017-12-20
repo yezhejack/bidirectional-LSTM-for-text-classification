@@ -48,11 +48,8 @@ def my_collate_fn_cuda(x):
     labels = Variable(torch.LongTensor([x[i]['label'] for i in sorted_index]))
     packed_sequences = torch.nn.utils.rnn.pack_padded_sequence(Variable(sentence_tensor.t()).cuda(), lengths)
     return {'sentence':packed_sequences, 'labels':labels.cuda(), 'reverse_sorted_index':reverse_sorted_index}
+
 def clean_str(string):
-    """
-    Tokenization/string cleaning for all datasets except for SST.
-    Original taken from https://github.com/yoonkim/CNN_sentence/blob/master/process_data.py
-    """
     string = re.sub(r"[^A-Za-z0-9(),!?\'\`]", " ", string)
     string = re.sub(r"\'s", " \'s", string)
     string = re.sub(r"\'ve", " \'ve", string)
